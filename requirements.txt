@@ -1,6 +1,7 @@
 fastapi
 uvicorn
 python-multipart
-pdf2image
 pillow
 paddleocr
+paddlepaddle
+PyMuPDF

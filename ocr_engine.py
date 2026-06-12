@@ -15,16 +15,69 @@ def assign_font(script):
 def process_pdf(pdf_bytes):
     result = {"pages": []}
 
-    pdf = fitz.open(stream=pdf_bytes, filetype="pdf")
+pdf = fitz.open(stream=pdf_bytes, filetype="pdf")
 
-    for page_index in range(len(pdf)):
-        page = pdf[page_index]
+for page_index in range(len(pdf)):
+    page = pdf[page_index]
 
-        pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
-        image_path = f"/tmp/page_{page_index}.png"
-        pix.save(image_path)
+    # Try extracting real PDF text first
+    text_dict = page.get_text("dict")
 
-        ocr_result = ocr.ocr(image_path, cls=True)
+    blocks = []
+
+    has_real_text = False
+
+    for block in text_dict.get("blocks", []):
+        if "lines" not in block:
+            continue
+
+        has_real_text = True
+
+        for line in block["lines"]:
+            for span in line["spans"]:
+
+                text = span["text"].strip()
+
+                if not text:
+                    continue
+
+                script = detect_script(text)
+
+                blocks.append({
+                    "text": text,
+                    "box": span["bbox"],
+                    "script": script,
+                    "font": span["font"],
+                    "size": span["size"],
+                    "confidence": 1.0,
+                    "source": "pdf"
+                })
+if not has_real_text:
+
+    pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
+    image_path = f"/tmp/page_{page_index}.png"
+    pix.save(image_path)
+
+    ocr_result = ocr.ocr(image_path, cls=True)
+
+    if ocr_result and ocr_result[0]:
+        for line in ocr_result[0]:
+
+            box = line[0]
+            text = line[1][0]
+            conf = float(line[1][1])
+
+            script = detect_script(text)
+
+            blocks.append({
+                "text": text,
+                "box": box,
+                "script": script,
+                "font": assign_font(script),
+                "confidence": conf,
+                "source": "ocr"
+            })
+        
 
         blocks = []
 
@@ -50,5 +103,6 @@ def process_pdf(pdf_bytes):
             "height": page.rect.height,
             "blocks": blocks
         })
-
+print("Using PDF text extraction")
+print("Using OCR fallback")
     return result

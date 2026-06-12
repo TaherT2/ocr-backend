@@ -1,7 +1,7 @@
 import fitz
 from paddleocr import PaddleOCR
 
-ocr = PaddleOCR(use_angle_cls=True, lang="en")
+ocr = PaddleOCR(use_angle_cls=True,lang="arabic",show_log=False)
 
 def detect_script(text):
     for c in text:

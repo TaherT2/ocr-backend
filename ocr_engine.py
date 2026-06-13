@@ -18,34 +18,40 @@ def assign_font(script):
     return "Noto Naskh Arabic" if script == "arabic" else "Arial"
 
 def process_pdf(pdf_bytes):
+
     result = {"pages": []}
 
     pdf = fitz.open(stream=pdf_bytes, filetype="pdf")
 
     for page_index in range(len(pdf)):
+
         page = pdf[page_index]
 
         blocks = []
 
-        # ==========================
-        # Try real PDF text first
-        # ==========================
+        # ====================================
+        # Try extracting real PDF text first
+        # ====================================
         text_dict = page.get_text("dict")
 
         has_real_text = False
 
         for block in text_dict.get("blocks", []):
+
             if "lines" not in block:
                 continue
 
             for line in block["lines"]:
+
                 for span in line["spans"]:
 
                     text = span["text"]
 
-text = "".join(ch for ch in text if ord(ch) >= 32)
-
-text = text.strip()
+                    # Remove control characters
+                    text = "".join(
+                        ch for ch in text
+                        if ord(ch) >= 32
+                    ).strip()
 
                     if not text:
                         continue
@@ -64,20 +70,23 @@ text = text.strip()
                         "source": "pdf"
                     })
 
-        # ==========================
+        # ====================================
         # OCR fallback for scanned PDFs
-        # ==========================
+        # ====================================
         if not has_real_text:
 
             print(f"Page {page_index + 1}: Using OCR fallback")
 
             pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
+
             image_path = f"/tmp/page_{page_index}.png"
+
             pix.save(image_path)
 
             ocr_result = ocr.ocr(image_path, cls=True)
 
             if ocr_result and ocr_result[0]:
+
                 for line in ocr_result[0]:
 
                     box = line[0]
@@ -96,6 +105,7 @@ text = text.strip()
                     })
 
         else:
+
             print(f"Page {page_index + 1}: Using PDF text extraction")
 
         result["pages"].append({

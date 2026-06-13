@@ -14,6 +14,15 @@ def detect_script(text):
             return "arabic"
     return "latin"
 
+def box_metrics(box):
+    x1 = min(p[0] for p in box)
+    y1 = min(p[1] for p in box)
+
+    x2 = max(p[0] for p in box)
+    y2 = max(p[1] for p in box)
+
+    return {"x": x1,"y": y1,"width":x2-x1,"height": y2 - y1,"center_x":(x1 + x2)/2,"center_y":(y1 + y2)/2,"rotation":0}
+
 def assign_font(script):
     return "Noto Naskh Arabic" if script == "arabic" else "Arial"
 
@@ -95,14 +104,12 @@ def process_pdf(pdf_bytes):
 
                     script = detect_script(text)
 
-                    blocks.append({
-                        "text": text,
-                        "box": box,
-                        "script": script,
-                        "font": assign_font(script),
-                        "confidence": conf,
-                        "source": "ocr"
-                    })
+                    metrics = box_metrics(box)
+
+blocks.append({
+    "text": text,"box": box,"x": metrics["x"],"y": metrics["y"],"width": metrics["width"],"height": metrics["height"],"center_x": metrics["center_x"],"center_y": metrics["center_y"],"rotation":metrics["rotation"],
+
+    "script":script,"font":assign_font(script),"confidence": conf,"source":"ocr"})
 
         else:
 

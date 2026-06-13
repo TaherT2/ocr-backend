@@ -1,5 +1,6 @@
 import fitz
 
+
 def replace_text_in_pdf(pdf_bytes, old_text, new_text):
 
     pdf = fitz.open(stream=pdf_bytes, filetype="pdf")
@@ -24,20 +25,28 @@ def replace_text_in_pdf(pdf_bytes, old_text, new_text):
 
                     x0, y0, x1, y1 = span["bbox"]
 
-                    # cover old text
+                    rect = fitz.Rect(
+                        x0,
+                        y0,
+                        x1,
+                        y1
+                    )
+
+                    # Cover old text
                     page.draw_rect(
-                        fitz.Rect(x0, y0, x1, y1),
+                        rect,
                         color=(1, 1, 1),
                         fill=(1, 1, 1)
                     )
 
-                    # write new text
-                    page.insert_text(
-                        (x0, y1 - 2),
+                    # Draw new text inside same box
+                    page.insert_textbox(
+                        rect,
                         new_text,
                         fontsize=span["size"],
                         fontname="helv",
-                        color=(0, 0, 0)
+                        color=(0, 0, 0),
+                        align=0
                     )
 
     output = pdf.tobytes()

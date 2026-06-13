@@ -39,3 +39,44 @@ async def replace_text(file: UploadFile = File(...),old_text: str = "",new_text:
 def test_edit(data: EditRequest):
 
     return {"original": data.text,"edited": data.text.upper()}
+
+from fastapi import FastAPI, UploadFile, File
+
+from ocr_engine import process_pdf
+
+app = FastAPI()
+
+last_result = None
+
+
+@app.get("/")
+def home():
+    return {"status": "OCR backend running"}
+
+
+@app.post("/ocr")
+async def ocr(file: UploadFile = File(...)):
+    global last_result
+
+    pdf_bytes = await file.read()
+
+    last_result = process_pdf(pdf_bytes)
+
+    return last_result
+
+
+@app.get("/block/{block_id}")
+def get_block(block_id: int):
+
+    if not last_result:
+        return {"error": "No PDF loaded"}
+
+    for page in last_result["pages"]:
+
+        for block in page["blocks"]:
+
+            if block["id"] == block_id:
+
+                return block
+
+    return {"error": "Block not found"}

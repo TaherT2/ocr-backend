@@ -1,16 +1,15 @@
 from fastapi import FastAPI, UploadFile, File
+from fastapi.responses import Response
 from pydantic import BaseModel
 
 from ocr_engine import process_pdf
-from pdf_editor import export_pdf_from_blocks
+from pdf_editor import rebuild_pdf
 
 app = FastAPI()
 
-# =========================
-# MEMORY STORAGE (TEMP DB)
-# =========================
-stored_pdf_bytes = None
-stored_ocr_result = None
+# memory storage
+pdf_bytes_store = None
+ocr_store = None
 
 
 class EditRequest(BaseModel):
@@ -20,79 +19,61 @@ class EditRequest(BaseModel):
 
 @app.get("/")
 def home():
-    return {"status": "OCR + EDIT + EXPORT backend running"}
+    return {"status": "OCR + PDF Editor running"}
 
 
-# =========================
-# 1. UPLOAD + OCR
-# =========================
+# STEP 1: OCR UPLOAD
 @app.post("/ocr")
 async def ocr(file: UploadFile = File(...)):
-    global stored_pdf_bytes, stored_ocr_result
 
-    stored_pdf_bytes = await file.read()
+    global pdf_bytes_store, ocr_store
 
-    stored_ocr_result = process_pdf(stored_pdf_bytes)
+    pdf_bytes_store = await file.read()
+    ocr_store = process_pdf(pdf_bytes_store)
 
-    return stored_ocr_result
-
-
-# =========================
-# DEBUG VIEW BLOCKS
-# =========================
-@app.get("/blocks")
-def get_blocks():
-
-    if stored_ocr_result is None:
-        return {"error": "No PDF loaded"}
-
-    return stored_ocr_result
+    return ocr_store
 
 
-# =========================
-# EDIT BLOCK
-# =========================
+# STEP 2: EDIT BLOCK
 @app.post("/edit")
 def edit_block(request: EditRequest):
 
-    global stored_ocr_result
+    global ocr_store
 
-    if stored_ocr_result is None:
+    if not ocr_store:
         return {"error": "No PDF loaded"}
 
-    for page in stored_ocr_result["pages"]:
+    for page in ocr_store["pages"]:
         for block in page["blocks"]:
 
             if block["id"] == request.block_id:
-                old = block["text"]
-                block["text"] = request.new_text
+                block["edited_text"] = request.new_text
 
                 return {
                     "success": True,
                     "block_id": request.block_id,
-                    "old_text": old,
+                    "old_text": block["text"],
                     "new_text": request.new_text
                 }
 
     return {"error": "Block not found"}
 
 
-# =========================
-# 3. EXPORT FINAL PDF
-# =========================
+# STEP 3: EXPORT FINAL PDF (DOWNLOAD BUTTON FIX)
 @app.get("/export")
 def export_pdf():
 
-    global stored_pdf_bytes, stored_ocr_result
+    global pdf_bytes_store, ocr_store
 
-    if stored_pdf_bytes is None or stored_ocr_result is None:
+    if not pdf_bytes_store or not ocr_store:
         return {"error": "No PDF loaded"}
 
-    final_pdf = export_pdf_from_blocks(
-        stored_pdf_bytes,
-        stored_ocr_result
-    )
+    final_pdf = rebuild_pdf(pdf_bytes_store, ocr_store)
 
-    return {
-        "file": final_pdf.hex()
-    }
+    return Response(
+        content=final_pdf,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": "attachment; filename=edited.pdf"
+        }
+    )

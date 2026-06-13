@@ -41,7 +41,14 @@ def process_pdf(pdf_bytes):
             for line in block["lines"]:
                 for span in line["spans"]:
 
-                    text = span["text"].strip()
+                    text = span["text"]
+
+text = "".join(
+    ch for ch in text
+    if ord(ch) >= 32
+)
+
+text = text.strip()
 
                     if not text:
                         continue

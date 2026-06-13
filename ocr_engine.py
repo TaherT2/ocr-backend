@@ -8,33 +8,95 @@ ocr = PaddleOCR(
     show_log=False
 )
 
+
 def detect_script(text):
     for c in text:
         if "\u0600" <= c <= "\u06FF":
             return "arabic"
     return "latin"
 
+
 def assign_font(script):
     return "Noto Naskh Arabic" if script == "arabic" else "Arial"
 
-def process_pdf(pdf_bytes):
 
-    result = {
-        "pages": []
+def clean_text(text):
+    text = "".join(
+        ch for ch in text
+        if ord(ch) >= 32
+    )
+    return text.strip()
+
+
+def build_block(
+    block_id,
+    text,
+    bbox,
+    script,
+    font,
+    size,
+    confidence,
+    source
+):
+    x0, y0, x1, y1 = bbox
+
+    width = x1 - x0
+    height = y1 - y0
+
+    text_length = len(text)
+
+    chars_per_pixel = (
+        round(text_length / width, 4)
+        if width > 0 else 0
+    )
+
+    center_x = x0 + (width / 2)
+    center_y = y0 + (height / 2)
+
+    return {
+        "id": block_id,
+        "text": text,
+        "box": bbox,
+
+        "x": x0,
+        "y": y0,
+        "width": width,
+        "height": height,
+
+        "center_x": center_x,
+        "center_y": center_y,
+
+        "text_length": text_length,
+        "chars_per_pixel": chars_per_pixel,
+
+        "script": script,
+        "font": font,
+        "size": size,
+        "confidence": confidence,
+        "source": source,
+
+        "editable": True
     }
 
-    pdf = fitz.open(stream=pdf_bytes, filetype="pdf")
+
+def process_pdf(pdf_bytes):
+    result = {"pages": []}
+
+    pdf = fitz.open(
+        stream=pdf_bytes,
+        filetype="pdf"
+    )
+
+    block_id = 0
 
     for page_index in range(len(pdf)):
-
         page = pdf[page_index]
 
         blocks = []
 
-        # =====================================
+        # ==================================================
         # Try extracting real PDF text first
-        # =====================================
-
+        # ==================================================
         text_dict = page.get_text("dict")
 
         has_real_text = False
@@ -48,12 +110,9 @@ def process_pdf(pdf_bytes):
 
                 for span in line["spans"]:
 
-                    text = span["text"]
-
-                    text = "".join(
-                        ch for ch in text
-                        if ord(ch) >= 32
-                    ).strip()
+                    text = clean_text(
+                        span.get("text", "")
+                    )
 
                     if not text:
                         continue
@@ -64,76 +123,101 @@ def process_pdf(pdf_bytes):
 
                     bbox = span["bbox"]
 
-                    blocks.append({
-                        "id": len(blocks),
-                        "text": text,
-                        "box": bbox,
-                        "x": bbox[0],
-                        "y": bbox[1],
-                        "width": bbox[2] - bbox[0],
-                        "height": bbox[3] - bbox[1],
-                        "script": script,
-                        "font": span.get("font", assign_font(script)),
-                        "size": span.get("size", 12),
-                        "confidence": 1.0,
-                        "source": "pdf",
-                        "editable": True
-                    })
+                    blocks.append(
+                        build_block(
+                            block_id=block_id,
+                            text=text,
+                            bbox=bbox,
+                            script=script,
+                            font=span.get(
+                                "font",
+                                assign_font(script)
+                            ),
+                            size=span.get(
+                                "size",
+                                12
+                            ),
+                            confidence=1.0,
+                            source="pdf"
+                        )
+                    )
 
-        # =====================================
+                    block_id += 1
+
+        # ==================================================
         # OCR fallback for scanned PDFs
-        # =====================================
-
+        # ==================================================
         if not has_real_text:
 
-            print(f"Page {page_index + 1}: Using OCR fallback")
+            print(
+                f"Page {page_index + 1}: Using OCR fallback"
+            )
 
-            pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
+            pix = page.get_pixmap(
+                matrix=fitz.Matrix(2, 2)
+            )
 
-            image_path = f"/tmp/page_{page_index}.png"
+            image_path = (
+                f"/tmp/page_{page_index}.png"
+            )
 
             pix.save(image_path)
 
-            ocr_result = ocr.ocr(image_path, cls=True)
+            ocr_result = ocr.ocr(
+                image_path,
+                cls=True
+            )
 
             if ocr_result and ocr_result[0]:
 
                 for line in ocr_result[0]:
 
                     box = line[0]
-                    text = line[1][0]
-                    conf = float(line[1][1])
 
-                    script = detect_script(text)
+                    text = clean_text(
+                        line[1][0]
+                    )
+
+                    if not text:
+                        continue
+
+                    conf = float(
+                        line[1][1]
+                    )
+
+                    script = detect_script(
+                        text
+                    )
 
                     xs = [p[0] for p in box]
                     ys = [p[1] for p in box]
 
-                    x = min(xs)
-                    y = min(ys)
+                    bbox = [
+                        min(xs),
+                        min(ys),
+                        max(xs),
+                        max(ys)
+                    ]
 
-                    width = max(xs) - min(xs)
-                    height = max(ys) - min(ys)
+                    blocks.append(
+                        build_block(
+                            block_id=block_id,
+                            text=text,
+                            bbox=bbox,
+                            script=script,
+                            font=assign_font(script),
+                            size=12,
+                            confidence=conf,
+                            source="ocr"
+                        )
+                    )
 
-                    blocks.append({
-                        "id": len(blocks),
-                        "text": text,
-                        "box": box,
-                        "x": x,
-                        "y": y,
-                        "width": width,
-                        "height": height,
-                        "script": script,
-                        "font": assign_font(script),
-                        "size": round(height * 0.8, 2),
-                        "confidence": conf,
-                        "source": "ocr",
-                        "editable": True
-                    })
+                    block_id += 1
 
         else:
-
-            print(f"Page {page_index + 1}: Using PDF text extraction")
+            print(
+                f"Page {page_index + 1}: Using PDF text extraction"
+            )
 
         result["pages"].append({
             "page": page_index + 1,

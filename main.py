@@ -2,11 +2,15 @@ from fastapi import FastAPI, UploadFile, File
 from pydantic import BaseModel
 
 from ocr_engine import process_pdf
+from pdf_editor import export_pdf_from_blocks
 
 app = FastAPI()
 
-# Stores the latest OCR result in memory
-last_result = None
+# =========================
+# MEMORY STORAGE (TEMP DB)
+# =========================
+stored_pdf_bytes = None
+stored_ocr_result = None
 
 
 class EditRequest(BaseModel):
@@ -16,84 +20,79 @@ class EditRequest(BaseModel):
 
 @app.get("/")
 def home():
-    return {
-        "status": "OCR backend running"
-    }
+    return {"status": "OCR + EDIT + EXPORT backend running"}
 
 
+# =========================
+# 1. UPLOAD + OCR
+# =========================
 @app.post("/ocr")
 async def ocr(file: UploadFile = File(...)):
-    global last_result
+    global stored_pdf_bytes, stored_ocr_result
 
-    pdf_bytes = await file.read()
+    stored_pdf_bytes = await file.read()
 
-    last_result = process_pdf(pdf_bytes)
+    stored_ocr_result = process_pdf(stored_pdf_bytes)
 
-    return last_result
+    return stored_ocr_result
 
 
+# =========================
+# DEBUG VIEW BLOCKS
+# =========================
 @app.get("/blocks")
-def get_all_blocks():
+def get_blocks():
 
-    global last_result
+    if stored_ocr_result is None:
+        return {"error": "No PDF loaded"}
 
-    if last_result is None:
-        return {
-            "error": "No PDF loaded"
-        }
-
-    return last_result
+    return stored_ocr_result
 
 
-@app.get("/block/{block_id}")
-def get_block(block_id: int):
-
-    global last_result
-
-    if last_result is None:
-        return {
-            "error": "No PDF loaded"
-        }
-
-    for page in last_result["pages"]:
-
-        for block in page["blocks"]:
-
-            if block["id"] == block_id:
-                return block
-
-    return {
-        "error": f"Block {block_id} not found"
-    }
-
-
+# =========================
+# EDIT BLOCK
+# =========================
 @app.post("/edit")
 def edit_block(request: EditRequest):
 
-    global last_result
+    global stored_ocr_result
 
-    if last_result is None:
-        return {
-            "error": "No PDF loaded"
-        }
+    if stored_ocr_result is None:
+        return {"error": "No PDF loaded"}
 
-    for page in last_result["pages"]:
-
+    for page in stored_ocr_result["pages"]:
         for block in page["blocks"]:
 
             if block["id"] == request.block_id:
-
-                old_text = block["text"]
-
+                old = block["text"]
                 block["text"] = request.new_text
 
                 return {
                     "success": True,
                     "block_id": request.block_id,
-                    "old_text": old_text,
+                    "old_text": old,
                     "new_text": request.new_text
                 }
 
+    return {"error": "Block not found"}
+
+
+# =========================
+# 3. EXPORT FINAL PDF
+# =========================
+@app.get("/export")
+def export_pdf():
+
+    global stored_pdf_bytes, stored_ocr_result
+
+    if stored_pdf_bytes is None or stored_ocr_result is None:
+        return {"error": "No PDF loaded"}
+
+    final_pdf = export_pdf_from_blocks(
+        stored_pdf_bytes,
+        stored_ocr_result
+    )
+
     return {
-        "error": f"Block {request.block_id} not found"
+        "file": final_pdf.hex()
     }

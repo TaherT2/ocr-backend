@@ -11,3 +11,13 @@ def home():
 async def ocr(file: UploadFile = File(...)):
     pdf_bytes = await file.read()
     return process_pdf(pdf_bytes)
+
+from pydantic import BaseModel
+
+class EditRequest(BaseModel):
+    text: str
+
+@app.post("/test-edit")
+def test_edit(data: EditRequest):
+
+    return {"original": data.text,"edited": data.text.upper()}

@@ -4,7 +4,7 @@ from paddleocr import PaddleOCR
 # Arabic OCR model
 ocr = PaddleOCR(
     use_angle_cls=True,
-    lang="arabic",
+    lang="ar",
     show_log=False
 )
 
@@ -14,21 +14,14 @@ def detect_script(text):
             return "arabic"
     return "latin"
 
-def box_metrics(box):
-    x1 = min(p[0] for p in box)
-    y1 = min(p[1] for p in box)
-
-    x2 = max(p[0] for p in box)
-    y2 = max(p[1] for p in box)
-
-    return {"x": x1,"y": y1,"width":x2-x1,"height": y2 - y1,"center_x":(x1 + x2)/2,"center_y":(y1 + y2)/2,"rotation":0}
-
 def assign_font(script):
     return "Noto Naskh Arabic" if script == "arabic" else "Arial"
 
 def process_pdf(pdf_bytes):
 
-    result = {"pages": []}
+    result = {
+        "pages": []
+    }
 
     pdf = fitz.open(stream=pdf_bytes, filetype="pdf")
 
@@ -38,9 +31,10 @@ def process_pdf(pdf_bytes):
 
         blocks = []
 
-        # ====================================
+        # =====================================
         # Try extracting real PDF text first
-        # ====================================
+        # =====================================
+
         text_dict = page.get_text("dict")
 
         has_real_text = False
@@ -56,7 +50,6 @@ def process_pdf(pdf_bytes):
 
                     text = span["text"]
 
-                    # Remove control characters
                     text = "".join(
                         ch for ch in text
                         if ord(ch) >= 32
@@ -69,19 +62,28 @@ def process_pdf(pdf_bytes):
 
                     script = detect_script(text)
 
+                    bbox = span["bbox"]
+
                     blocks.append({
+                        "id": len(blocks),
                         "text": text,
-                        "box": span["bbox"],
+                        "box": bbox,
+                        "x": bbox[0],
+                        "y": bbox[1],
+                        "width": bbox[2] - bbox[0],
+                        "height": bbox[3] - bbox[1],
                         "script": script,
                         "font": span.get("font", assign_font(script)),
                         "size": span.get("size", 12),
                         "confidence": 1.0,
-                        "source": "pdf"
+                        "source": "pdf",
+                        "editable": True
                     })
 
-        # ====================================
+        # =====================================
         # OCR fallback for scanned PDFs
-        # ====================================
+        # =====================================
+
         if not has_real_text:
 
             print(f"Page {page_index + 1}: Using OCR fallback")
@@ -104,12 +106,30 @@ def process_pdf(pdf_bytes):
 
                     script = detect_script(text)
 
-                    metrics = box_metrics(box)
+                    xs = [p[0] for p in box]
+                    ys = [p[1] for p in box]
 
-blocks.append({
-    "text": text,"box": box,"x": metrics["x"],"y": metrics["y"],"width": metrics["width"],"height": metrics["height"],"center_x": metrics["center_x"],"center_y": metrics["center_y"],"rotation":metrics["rotation"],
+                    x = min(xs)
+                    y = min(ys)
 
-    "script":script,"font":assign_font(script),"confidence": conf,"source":"ocr"})
+                    width = max(xs) - min(xs)
+                    height = max(ys) - min(ys)
+
+                    blocks.append({
+                        "id": len(blocks),
+                        "text": text,
+                        "box": box,
+                        "x": x,
+                        "y": y,
+                        "width": width,
+                        "height": height,
+                        "script": script,
+                        "font": assign_font(script),
+                        "size": round(height * 0.8, 2),
+                        "confidence": conf,
+                        "source": "ocr",
+                        "editable": True
+                    })
 
         else:
 

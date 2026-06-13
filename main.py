@@ -3,55 +3,15 @@ from ocr_engine import process_pdf
 
 app = FastAPI()
 
-@app.get("/")
-def home():
-    return {"status": "OCR backend running"}
-
-@app.post("/ocr")
-async def ocr(file: UploadFile = File(...)):
-    pdf_bytes = await file.read()
-    return process_pdf(pdf_bytes)
-
-from pydantic import BaseModel
-
-class EditRequest(BaseModel):
-    text: str
-
-from pdf_editor import replace_text_in_pdf
-from fastapi.responses import Response
-from pydantic import BaseModel
-
-class ReplaceRequest(BaseModel):
-    old_text: str
-    new_text: str
-
-@app.post("/replace-text")
-async def replace_text(file: UploadFile = File(...),old_text: str = "",new_text: str = ""):
-
-    pdf_bytes = await file.read()
-
-    edited_pdf = replace_text_in_pdf(pdf_bytes,old_text,new_text)
-
-    return Response(content=edited_pdf,media_type="application/pdf",headers={"Content-Disposition":"attachment;filename=edited.pdf"})
-
-
-@app.post("/test-edit")
-def test_edit(data: EditRequest):
-
-    return {"original": data.text,"edited": data.text.upper()}
-
-from fastapi import FastAPI, UploadFile, File
-
-from ocr_engine import process_pdf
-
-app = FastAPI()
-
+# Store the last OCR result in memory
 last_result = None
 
 
 @app.get("/")
 def home():
-    return {"status": "OCR backend running"}
+    return {
+        "status": "OCR backend running"
+    }
 
 
 @app.post("/ocr")
@@ -65,11 +25,28 @@ async def ocr(file: UploadFile = File(...)):
     return last_result
 
 
+@app.get("/blocks")
+def get_all_blocks():
+
+    global last_result
+
+    if last_result is None:
+        return {
+            "error": "No PDF loaded"
+        }
+
+    return last_result
+
+
 @app.get("/block/{block_id}")
 def get_block(block_id: int):
 
-    if not last_result:
-        return {"error": "No PDF loaded"}
+    global last_result
+
+    if last_result is None:
+        return {
+            "error": "No PDF loaded"
+        }
 
     for page in last_result["pages"]:
 
@@ -79,4 +56,6 @@ def get_block(block_id: int):
 
                 return block
 
-    return {"error": "Block not found"}
+    return {
+        "error": f"Block {block_id} not found"
+    }

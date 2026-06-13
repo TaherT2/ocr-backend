@@ -1,56 +1,43 @@
 import fitz
 
 
-def replace_text_in_pdf(pdf_bytes, old_text, new_text):
+def export_pdf_from_blocks(pdf_bytes, ocr_result):
+    """
+    Rebuilds PDF using edited OCR JSON blocks.
+    """
 
     pdf = fitz.open(stream=pdf_bytes, filetype="pdf")
 
-    for page in pdf:
+    for page_data in ocr_result["pages"]:
 
-        text_dict = page.get_text("dict")
+        page_index = page_data["page"] - 1
+        page = pdf[page_index]
 
-        for block in text_dict.get("blocks", []):
+        # Go through all blocks
+        for block in page_data["blocks"]:
 
-            if "lines" not in block:
-                continue
+            x0, y0, x1, y1 = block["box"]
 
-            for line in block["lines"]:
+            rect = fitz.Rect(x0, y0, x1, y1)
 
-                for span in line["spans"]:
+            # 1. erase old text area
+            page.draw_rect(
+                rect,
+                color=(1, 1, 1),
+                fill=(1, 1, 1)
+            )
 
-                    text = span["text"].strip()
-
-                    if text != old_text:
-                        continue
-
-                    x0, y0, x1, y1 = span["bbox"]
-
-                    rect = fitz.Rect(
-                        x0,
-                        y0,
-                        x1,
-                        y1
-                    )
-
-                    # Cover old text
-                    page.draw_rect(
-                        rect,
-                        color=(1, 1, 1),
-                        fill=(1, 1, 1)
-                    )
-
-                    # Draw new text inside same box
-                    page.insert_textbox(
-                        rect,
-                        new_text,
-                        fontsize=span["size"],
-                        fontname="helv",
-                        color=(0, 0, 0),
-                        align=0
-                    )
+            # 2. write new text
+            page.insert_textbox(
+                rect,
+                block["text"],
+                fontsize=block.get("size", 12),
+                fontname="helv",
+                color=(0, 0, 0),
+                align=0
+            )
 
     output = pdf.tobytes()
-
     pdf.close()
 
     return output

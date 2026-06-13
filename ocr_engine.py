@@ -4,7 +4,7 @@ from paddleocr import PaddleOCR
 # Arabic OCR model
 ocr = PaddleOCR(
     use_angle_cls=True,
-    lang="Arabic",
+    lang="ar",
     show_log=False
 )
 

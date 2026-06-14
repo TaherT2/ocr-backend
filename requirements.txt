@@ -3,7 +3,7 @@ uvicorn
 python-multipart
 pymupdf
 paddleocr==2.7.3
-paddlepaddle==2.5.2
+paddlepaddle==2.6.1
 arabic-reshaper
 python-bidi
 pillow

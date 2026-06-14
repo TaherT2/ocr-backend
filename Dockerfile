@@ -22,5 +22,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# Force exactly 1 worker to prevent memory duplication
-CMD uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1
+# Force exactly 1 worker to prevent memory duplication, using recommended JSON array syntax
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1"]

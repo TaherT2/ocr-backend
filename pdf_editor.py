@@ -5,44 +5,38 @@ import arabic_reshaper
 from bidi.algorithm import get_display
 
 def rebuild_pdf(original_pdf_bytes, ocr_data):
-    pdf = fitz.open(stream=original_pdf_bytes, filetype="pdf")
+    input_path = "/tmp/rebuild_in.pdf"
+    output_path = "/tmp/rebuild_out.pdf"
+    with open(input_path, "wb") as f: f.write(original_pdf_bytes)
+    
+    pdf = fitz.open(input_path)
     font_path = "fonts/NotoNaskhArabic-Regular.ttf"
     has_arabic_font = os.path.exists(font_path)
 
     for page_data in ocr_data["pages"]:
         page = pdf[page_data["page"] - 1]
-        
-        # Register font once per page if needed
-        if has_arabic_font:
-            page.insert_font(fontname="arab", fontfile=font_path)
+        if has_arabic_font: page.insert_font(fontname="arab", fontfile=font_path)
 
-        # 1. Redact existing text
-        blocks_to_replace = [b for b in page_data["blocks"] if "edited_text" in b]
-        for block in blocks_to_replace:
-            page.add_redact_annot(fitz.Rect(block["box"]), fill=(1, 1, 1))
-        
-        if blocks_to_replace:
+        to_replace = [b for b in page_data["blocks"] if "edited_text" in b]
+        if to_replace:
+            # Apply redactions
+            for block in to_replace:
+                page.add_redact_annot(fitz.Rect(block["box"]), fill=(1, 1, 1))
             page.apply_redactions()
 
-        # 2. Insert new text
-        for block in blocks_to_replace:
-            rect = fitz.Rect(block["box"])
-            new_text = block["edited_text"]
-            
-            # Proper Arabic processing only at insertion time
-            if block.get("script") == "arabic":
-                final_text = get_display(arabic_reshaper.reshape(new_text))
-                font = "arab" if has_arabic_font else "helv"
-            else:
-                final_text = new_text
-                font = "helv"
-
-            page.insert_textbox(rect, final_text, fontsize=block.get("size", 12), 
-                                fontname=font, color=(0, 0, 0), align=1)
+            # Insert new text
+            for block in to_replace:
+                new_text = block["edited_text"]
+                if block.get("script") == "arabic":
+                    final_text = get_display(arabic_reshaper.reshape(new_text))
+                    font = "arab"
+                else:
+                    final_text = new_text
+                    font = "helv"
+                page.insert_textbox(fitz.Rect(block["box"]), final_text, fontsize=12, fontname=font, align=1)
         
-        # Critical memory cleanup per page
         gc.collect()
 
-    output = pdf.tobytes()
+    pdf.save(output_path)
     pdf.close()
-    return output
+    return output_path

@@ -7,7 +7,6 @@ from pdf_editor import rebuild_pdf
 
 app = FastAPI()
 
-# memory storage
 pdf_bytes_store = None
 ocr_store = None
 
@@ -22,19 +21,21 @@ def home():
     return {"status": "OCR + PDF Editor running"}
 
 
-# STEP 1: OCR UPLOAD
 @app.post("/ocr")
 async def ocr(file: UploadFile = File(...)):
 
     global pdf_bytes_store, ocr_store
 
-    pdf_bytes_store = await file.read()
-    ocr_store = process_pdf(pdf_bytes_store)
+    try:
+        pdf_bytes_store = await file.read()
+        ocr_store = process_pdf(pdf_bytes_store)
 
-    return ocr_store
+        return ocr_store
+
+    except Exception as e:
+        return {"error": str(e)}
 
 
-# STEP 2: EDIT BLOCK
 @app.post("/edit")
 def edit_block(request: EditRequest):
 
@@ -59,21 +60,24 @@ def edit_block(request: EditRequest):
     return {"error": "Block not found"}
 
 
-# STEP 3: EXPORT FINAL PDF (DOWNLOAD BUTTON FIX)
 @app.get("/export")
 def export_pdf():
 
     global pdf_bytes_store, ocr_store
 
-    if not pdf_bytes_store or not ocr_store:
-        return {"error": "No PDF loaded"}
+    try:
+        if not pdf_bytes_store or not ocr_store:
+            return {"error": "No PDF loaded"}
 
-    final_pdf = rebuild_pdf(pdf_bytes_store, ocr_store)
+        final_pdf = rebuild_pdf(pdf_bytes_store, ocr_store)
 
-    return Response(
-        content=final_pdf,
-        media_type="application/pdf",
-        headers={
-            "Content-Disposition": "attachment; filename=edited.pdf"
-        }
-    )
+        return Response(
+            content=final_pdf,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": "attachment; filename=edited.pdf"
+            }
+        )
+
+    except Exception as e:
+        return {"error": str(e)}

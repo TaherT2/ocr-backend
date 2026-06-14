@@ -24,6 +24,8 @@ async def ocr(file: UploadFile = File(...)):
 @app.post("/edit")
 def edit_block(request: EditRequest):
     global ocr_store
+    if not ocr_store: return {"error": "No PDF loaded"}
+    
     for page in ocr_store["pages"]:
         for block in page["blocks"]:
             if block["id"] == request.block_id:
@@ -33,5 +35,10 @@ def edit_block(request: EditRequest):
 
 @app.get("/export")
 def export_pdf():
+    global pdf_bytes_store, ocr_store
+    if not pdf_bytes_store or not ocr_store:
+        return {"error": "No PDF loaded"}
+    
     final_pdf = rebuild_pdf(pdf_bytes_store, ocr_store)
+    gc.collect()
     return Response(content=final_pdf, media_type="application/pdf")

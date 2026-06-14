@@ -1,9 +1,3 @@
-import fitz
-import os
-import gc
-import arabic_reshaper
-from bidi.algorithm import get_display
-
 def rebuild_pdf(original_pdf_bytes, ocr_data):
     input_path = "/tmp/rebuild_in.pdf"
     output_path = "/tmp/rebuild_out.pdf"
@@ -17,17 +11,12 @@ def rebuild_pdf(original_pdf_bytes, ocr_data):
         page_index = page_data["page"] - 1
         page = doc[page_index]
         
-        # Calculate offset to handle PDFs that don't start at (0,0)
-        # Often PDFs have a 'media_box' offset we need to account for
-        offset_x, offset_y = page.rect.x0, page.rect.y0
-        
         to_replace = [b for b in page_data["blocks"] if "edited_text" in b]
         
         if to_replace:
-            # Apply redactions with offset
+            # Redact using the raw box coordinates directly
             for block in to_replace:
-                x0, y0, x1, y1 = block["box"]
-                rect = fitz.Rect(x0 + offset_x, y0 + offset_y, x1 + offset_x, y1 + offset_y)
+                rect = fitz.Rect(block["box"]) # No offset here
                 page.add_redact_annot(rect, fill=(1, 1, 1))
             page.apply_redactions()
 
@@ -35,10 +24,9 @@ def rebuild_pdf(original_pdf_bytes, ocr_data):
                 page.insert_font(fontname="arab", fontfile=font_path)
                 
             for block in to_replace:
-                x0, y0, x1, y1 = block["box"]
-                rect = fitz.Rect(x0 + offset_x, y0 + offset_y, x1 + offset_x, y1 + offset_y)
+                rect = fitz.Rect(block["box"]) # Use the box as is
                 
-                # Draw DEBUG Box (with offset)
+                # DEBUG: Draw red box
                 page.draw_rect(rect, color=(1, 0, 0), width=1)
                 
                 new_text = block["edited_text"]

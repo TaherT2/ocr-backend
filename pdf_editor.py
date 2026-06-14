@@ -20,7 +20,7 @@ def rebuild_pdf(original_pdf_bytes, ocr_data):
         to_replace = [b for b in page_data["blocks"] if "edited_text" in b]
         
         if to_replace:
-            # 1. Redact exactly on the coordinates
+            # 1. Apply absolute redactions
             for block in to_replace:
                 rect = fitz.Rect(block["box"])
                 page.add_redact_annot(rect, fill=(1, 1, 1))
@@ -34,10 +34,12 @@ def rebuild_pdf(original_pdf_bytes, ocr_data):
             for block in to_replace:
                 rect = fitz.Rect(block["box"])
                 
-                # DEBUG: Draw red box around the edited area
-                page.draw_rect(rect, color=(1, 0, 0), width=1)
+                # DEBUG: Draw red box (Will map perfectly now)
+                page.draw_rect(rect, color=(1, 0, 0), width=1.5)
                 
                 new_text = block["edited_text"]
+                
+                # Only apply Bidi and reshaping at the drawing phase
                 if block.get("script") == "arabic":
                     final_text = get_display(arabic_reshaper.reshape(new_text))
                     font = "arab"
@@ -45,12 +47,13 @@ def rebuild_pdf(original_pdf_bytes, ocr_data):
                     final_text = new_text
                     font = "helv"
                 
-                # Insert horizontally centered text
+                # Insert text aligned to center (align=1)
                 page.insert_textbox(rect, final_text, fontsize=block.get("size", 12), 
                                     fontname=font, color=(0,0,0), align=1)
         
         gc.collect()
 
+    # Save cleanly
     doc.save(output_path, garbage=4, deflate=True)
     doc.close()
     return output_path

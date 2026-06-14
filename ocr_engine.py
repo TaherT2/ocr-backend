@@ -2,8 +2,6 @@ import os
 import gc
 import fitz
 from paddleocr import PaddleOCR
-import arabic_reshaper
-from bidi.algorithm import get_display
 
 # Strict memory limits
 os.environ["FLAGS_use_mkldnn"] = "0"
@@ -11,13 +9,15 @@ os.environ["FLAGS_enable_pir_api"] = "0"
 os.environ["FLAGS_allocator_strategy"] = "auto_growth"
 os.environ["OMP_NUM_THREADS"] = "1"
 
+# 🔴 CRITICAL FIX: det_limit_side_len=4000 stops Paddle from secretly resizing the image
 ocr = PaddleOCR(
     use_angle_cls=False,
     lang="ar",
     show_log=False,
     use_gpu=False,
     cpu_threads=1,
-    enable_mkldnn=False
+    enable_mkldnn=False,
+    det_limit_side_len=4000  
 )
 
 def detect_script(text):
@@ -25,12 +25,6 @@ def detect_script(text):
         if "\u0600" <= c <= "\u06FF":
             return "arabic"
     return "latin"
-
-def format_arabic_text(text, script):
-    if script == "arabic":
-        # Make Arabic readable in the JSON output
-        return get_display(arabic_reshaper.reshape(text))
-    return text
 
 def assign_font(script):
     return "Noto Naskh Arabic" if script == "arabic" else "Arial"
@@ -48,18 +42,21 @@ def build_block(block_id, text, bbox, script, font, size, confidence, source):
         "id": block_id,
         "text": text,
         "box": bbox,
-        "x": x0,
-        "y": y0,
-        "width": width,
-        "height": height,
-        "center_x": x0 + width / 2,
-        "center_y": y0 + height / 2,
+        
+        # Frontend Mapping Variables Restored
+        "x": round(x0, 2),
+        "y": round(y0, 2),
+        "width": round(width, 2),
+        "height": round(height, 2),
+        "center_x": round(x0 + width / 2, 2),
+        "center_y": round(y0 + height / 2, 2),
         "text_length": text_length,
         "chars_per_pixel": round(text_length / width, 4) if width > 0 else 0,
+        
         "script": script,
         "font": font,
         "size": size,
-        "confidence": confidence,
+        "confidence": round(confidence, 4),
         "source": source,
         "editable": True
     }
@@ -77,12 +74,10 @@ def process_pdf(pdf_bytes):
         page = pdf[page_index]
         blocks = []
         
-        # Capture the offset if the PDF cropbox doesn't start at 0,0
-        crop_x = page.cropbox.x0
-        crop_y = page.cropbox.y0
+        scale = 2.0
+        mat = fitz.Matrix(scale, scale)
+        pix = page.get_pixmap(matrix=mat)
         
-        scale = 1.5
-        pix = page.get_pixmap(matrix=fitz.Matrix(scale, scale))
         img_path = f"/tmp/page_{page_index}.png"
         pix.save(img_path)
 
@@ -90,23 +85,33 @@ def process_pdf(pdf_bytes):
             ocr_result = ocr.ocr(img_path)
             if ocr_result and ocr_result[0]:
                 for line in ocr_result[0]:
-                    box = line[0]
+                    box = line[0]  # PaddleOCR 4-point polygon
                     raw_text = clean_text(line[1][0])
                     conf = float(line[1][1])
+                    
                     if not raw_text: continue
                     
                     script = detect_script(raw_text)
-                    readable_text = format_arabic_text(raw_text, script)
                     
-                    # Convert from scaled image pixels to absolute PDF points
-                    x0 = (min([p[0] for p in box]) / scale) + crop_x
-                    y0 = (min([p[1] for p in box]) / scale) + crop_y
-                    x1 = (max([p[0] for p in box]) / scale) + crop_x
-                    y1 = (max([p[1] for p in box]) / scale) + crop_y
+                    # Map the 4-point image coordinates back to absolute PDF points
+                    p0 = fitz.Point(box[0]) / scale
+                    p1 = fitz.Point(box[1]) / scale
+                    p2 = fitz.Point(box[2]) / scale
+                    p3 = fitz.Point(box[3]) / scale
+                    
+                    # Quad creates a perfect bounding box even if the text is rotated
+                    bbox_rect = fitz.Quad(p0, p1, p2, p3).rect
+                    
+                    # Ensure alignment with cropbox offset (if any)
+                    x0 = bbox_rect.x0 + page.cropbox.x0
+                    y0 = bbox_rect.y0 + page.cropbox.y0
+                    x1 = bbox_rect.x1 + page.cropbox.x0
+                    y1 = bbox_rect.y1 + page.cropbox.y0
+                    
                     bbox = [x0, y0, x1, y1]
                     
                     blocks.append(build_block(
-                        block_id, readable_text, bbox, script, 
+                        block_id, raw_text, bbox, script, 
                         assign_font(script), 12, conf, "ocr"
                     ))
                     block_id += 1

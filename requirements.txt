@@ -1,8 +1,8 @@
-fastapi==0.115.0
-uvicorn[standard]==0.30.6
-python-multipart==0.0.12
-pillow==10.4.0
-PyMuPDF
-numpy==1.26.4
-paddleocr==2.7.3
-paddlepaddle==2.6.2
+fastapi
+uvicorn
+python-multipart
+pymupdf
+paddleocr
+paddlepaddle
+arabic-reshaper
+python-bidi

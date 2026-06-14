@@ -1,6 +1,4 @@
 FROM python:3.11-slim
-
-# Aggressive memory limits for 500MB RAM ceiling
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV MALLOC_ARENA_MAX=2
@@ -15,12 +13,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-
 COPY requirements.txt .
-
 RUN pip install --no-cache-dir -r requirements.txt
-
 COPY . .
-
-# Force exactly 1 worker to prevent memory duplication, using recommended JSON array syntax
 CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1"]

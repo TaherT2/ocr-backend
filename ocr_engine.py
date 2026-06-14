@@ -3,17 +3,21 @@ import fitz
 from paddleocr import PaddleOCR
 
 # ==================================================
-# 🔧 Fix CPU / Paddle stability on Railway
+# 🔧 CRITICAL FIX: disable oneDNN / MKLDNN / PIR backend
 # ==================================================
 os.environ["FLAGS_use_mkldnn"] = "0"
+os.environ["FLAGS_enable_onednn"] = "0"
 os.environ["FLAGS_allocator_strategy"] = "auto_growth"
 
 
 # ==================================================
-# OCR INIT (MINIMAL SAFE MODE)
-# IMPORTANT: NO use_gpu, NO cls, NO show_log
+# OCR ENGINE (STABLE CONFIG FOR RAILWAY)
+# IMPORTANT: keep minimal args only
 # ==================================================
-ocr = PaddleOCR()
+ocr = PaddleOCR(
+    use_angle_cls=False,
+    lang="en"
+)
 
 
 # ==================================================
@@ -36,6 +40,7 @@ def assign_font(script):
 def clean_text(text):
     if not text:
         return ""
+
     return "".join(ch for ch in str(text) if ord(ch) >= 32).strip()
 
 
@@ -53,8 +58,8 @@ def build_block(
     source
 ):
     x0, y0, x1, y1 = bbox
-
     width = x1 - x0
+    height = y1 - y0
 
     return {
         "id": block_id,
@@ -64,10 +69,10 @@ def build_block(
         "x": x0,
         "y": y0,
         "width": width,
-        "height": y1 - y0,
+        "height": height,
 
         "center_x": x0 + width / 2,
-        "center_y": y0 + (y1 - y0) / 2,
+        "center_y": y0 + height / 2,
 
         "script": script,
         "font": font,
@@ -80,7 +85,7 @@ def build_block(
 
 
 # ==================================================
-# MAIN PIPELINE
+# MAIN OCR PIPELINE
 # ==================================================
 def process_pdf(pdf_bytes):
     result = {"pages": []}
@@ -94,7 +99,7 @@ def process_pdf(pdf_bytes):
         blocks = []
 
         # ==========================================
-        # 1. Extract embedded PDF text
+        # 1. Try extracting embedded PDF text first
         # ==========================================
         text_dict = page.get_text("dict")
         has_real_text = False
@@ -129,7 +134,7 @@ def process_pdf(pdf_bytes):
                     block_id += 1
 
         # ==========================================
-        # 2. OCR fallback
+        # 2. OCR fallback (scanned PDFs)
         # ==========================================
         if not has_real_text:
             print(f"Page {page_index + 1}: OCR fallback")
@@ -138,7 +143,7 @@ def process_pdf(pdf_bytes):
             image_path = f"/tmp/page_{page_index}.png"
             pix.save(image_path)
 
-            # SAFE CALL (NO PARAMETERS)
+            # IMPORTANT: PaddleOCR stable call (NO FLAGS)
             ocr_result = ocr.ocr(image_path)
 
             if ocr_result and ocr_result[0]:
@@ -180,7 +185,7 @@ def process_pdf(pdf_bytes):
                     block_id += 1
 
         else:
-            print(f"Page {page_index + 1}: PDF text extraction")
+            print(f"Page {page_index + 1}: Using PDF text extraction")
 
         result["pages"].append({
             "page": page_index + 1,

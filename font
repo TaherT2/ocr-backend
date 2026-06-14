@@ -1,5 +1,4 @@
-
-.noto-naskh-arabic-<uniquifier> {
+noto-naskh-arabic-<uniquifier> {
   font-family: "Noto Naskh Arabic", serif;
   font-optical-sizing: auto;
   font-weight: <weight>;

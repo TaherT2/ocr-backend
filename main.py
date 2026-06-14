@@ -19,7 +19,8 @@ async def ocr(file: UploadFile = File(...)):
     pdf_bytes_store = await file.read()
     ocr_store = process_pdf(pdf_bytes_store)
     gc.collect()
-    return {"status": "OCR Complete", "pages_count": len(ocr_store["pages"])}
+    # CRITICAL CHANGE: Return the full store so you can see IDs and box coordinates
+    return ocr_store 
 
 @app.post("/edit")
 def edit_block(request: EditRequest):
@@ -39,6 +40,5 @@ def export_pdf():
     global pdf_bytes_store, ocr_store
     if not pdf_bytes_store or not ocr_store:
         return {"error": "No PDF loaded"}
-    
     path = rebuild_pdf(pdf_bytes_store, ocr_store)
     return FileResponse(path, media_type="application/pdf", filename="edited.pdf")

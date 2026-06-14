@@ -10,27 +10,44 @@ def rebuild_pdf(original_pdf_bytes, ocr_data):
         page_index = page_data["page"] - 1
         page = pdf[page_index]
 
+        # ==========================================
+        # STEP 1: Add redactions
+        # ==========================================
+
+        redactions = []
+
         for block in page_data["blocks"]:
 
             if "edited_text" not in block:
                 continue
 
-            new_text = block["edited_text"]
-
             x0, y0, x1, y1 = block["box"]
 
             rect = fitz.Rect(x0, y0, x1, y1)
 
-            # cover original text
-            page.draw_rect(
+            page.add_redact_annot(
                 rect,
-                color=(1, 1, 1),
                 fill=(1, 1, 1)
             )
 
+            redactions.append(block)
+
+        # Permanently remove original content
+        if redactions:
+            page.apply_redactions()
+
+        # ==========================================
+        # STEP 2: Draw replacement text
+        # ==========================================
+
+        for block in redactions:
+
+            new_text = block["edited_text"]
+
+            x0, y0, x1, y1 = block["box"]
+
             font_size = block.get("size", 12)
 
-            # baseline position
             insert_x = x0
             insert_y = y1 - (font_size * 0.20)
 

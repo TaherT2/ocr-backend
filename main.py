@@ -1,7 +1,7 @@
 from fastapi import FastAPI, UploadFile, File
-from fastapi.responses import Response
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
-import gc
+import gc, os
 from ocr_engine import process_pdf
 from pdf_editor import rebuild_pdf
 
@@ -24,21 +24,15 @@ async def ocr(file: UploadFile = File(...)):
 @app.post("/edit")
 def edit_block(request: EditRequest):
     global ocr_store
-    if not ocr_store: return {"error": "No PDF loaded"}
-    
     for page in ocr_store["pages"]:
         for block in page["blocks"]:
             if block["id"] == request.block_id:
                 block["edited_text"] = request.new_text
                 return {"success": True}
-    return {"error": "Block not found"}
+    return {"error": "Not found"}
 
 @app.get("/export")
 def export_pdf():
     global pdf_bytes_store, ocr_store
-    if not pdf_bytes_store or not ocr_store:
-        return {"error": "No PDF loaded"}
-    
-    final_pdf = rebuild_pdf(pdf_bytes_store, ocr_store)
-    gc.collect()
-    return Response(content=final_pdf, media_type="application/pdf")
+    path = rebuild_pdf(pdf_bytes_store, ocr_store)
+    return FileResponse(path, media_type="application/pdf", filename="edited.pdf")
